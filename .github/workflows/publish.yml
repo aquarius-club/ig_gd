@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       folder:
-        description: "올릴 폴더 이름 (예: posts/2026-10-01)"
+        description: "올릴 폴더 이름 (예: 2026-10-01, now-20261001-090000)"
         required: true
   schedule:
     - cron: "0 0 * * *"   # 매일 오전 9시(한국 시간). 실제 실행은 늦어질 수 있어요
@@ -33,7 +33,7 @@ jobs:
             if [ -f "$FOLDER/posted.txt" ]; then echo "오류: $FOLDER는 이미 올린 폴더예요. 다시 올리려면 posted.txt를 지우세요"; exit 1; fi
           else
             # 아침 예약 실행: 오늘 날짜 폴더가 없거나 이미 올렸으면 조용히 쉬어요
-            FOLDER="posts/$(TZ=Asia/Seoul date +%F)"
+            FOLDER="posts/${FOLDER#posts/}"
             if [ ! -d "$FOLDER" ] || [ -f "$FOLDER/posted.txt" ]; then echo "오늘($FOLDER)은 올릴 게 없어서 쉬어요"; exit 0; fi
           fi
           python publish.py "$FOLDER"
