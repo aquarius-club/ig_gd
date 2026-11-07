@@ -6,6 +6,8 @@ USER = os.environ["IG_USER_ID"]
 TOKEN = os.environ["IG_ACCESS_TOKEN"]
 BASE = os.environ["IMG_BASE"].rstrip("/")
 folder = sys.argv[1].strip("/")
+if not folder.startswith("posts/"):
+    folder = f"posts/{folder}"
 
 
 def call(path, **data):
@@ -17,12 +19,23 @@ def call(path, **data):
     return r["id"]
 
 
+def wait(media_id):
+    # 인스타가 사진을 다 받아 갈 때까지 기다립니다. 실패하면 API 메시지를 그대로 남깁니다
+    for _ in range(20):
+        state = requests.get(f"{API}/{media_id}", params={"fields": "status_code,status", "access_token": TOKEN}, timeout=30).json()
+        if state.get("status_code") == "FINISHED":
+            return
+        if state.get("status_code") == "ERROR":
+            sys.exit(f"오류(status_code=ERROR): {state.get('status')}")
+        time.sleep(3)
+
+
 if os.path.exists(f"{folder}/posted.txt"):
     sys.exit(f"{folder}는 이미 올린 폴더예요. 다시 올리려면 posted.txt를 지우세요")
 
-photos = sorted(p for p in glob.glob(f"{folder}/*") if p.lower().endswith((".jpg", ".jpeg")))[:10]
+photos = sorted(p for p in glob.glob(f"{folder}/*") if p.lower().endswith((".jpg", ".jpeg", ".png")))[:10]
 if not photos:
-    sys.exit(f"{folder} 폴더에 JPG 사진이 없어요")
+    sys.exit(f"오류: {folder} 폴더에 사진(jpg, jpeg, png)이 없어요")
 cap_file = f"{folder}/caption.txt"
 caption = open(cap_file, encoding="utf-8").read() if os.path.exists(cap_file) else ""
 urls = [BASE + "/" + urllib.parse.quote(p.replace("\\", "/")) for p in photos]
@@ -31,14 +44,11 @@ if len(urls) == 1:
     box = call(f"{USER}/media", image_url=urls[0], caption=caption)
 else:
     kids = [call(f"{USER}/media", image_url=u, is_carousel_item="true") for u in urls]
+    for kid in kids:
+        wait(kid)
     box = call(f"{USER}/media", media_type="CAROUSEL", children=",".join(kids), caption=caption)
 
-# 인스타가 사진을 다 받아 갈 때까지 기다립니다
-for _ in range(20):
-    state = requests.get(f"{API}/{box}", params={"fields": "status_code", "access_token": TOKEN}, timeout=30).json()
-    if state.get("status_code") in ("FINISHED", "ERROR"):
-        break
-    time.sleep(3)
+wait(box)
 
 post_id = call(f"{USER}/media_publish", creation_id=box)
 open(f"{folder}/posted.txt", "w").write(post_id)  # 두 번 올라가지 않게 표시
